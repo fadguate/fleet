@@ -132,8 +132,8 @@
      Supabase → Configuración del proyecto → API
      ============================================================ -->
 <script>
-  window.SUPABASE_URL = "https://cppmmtqvpkxneeolwxxn.supabase.co";
-  window.SUPABASE_ANON_KEY = "sb_publishable_JDVeA3J0OTHTVRKcknz-Aw_AngYpTb8";
+  window.SUPABASE_URL = "https://TU-PROYECTO.supabase.co";
+  window.SUPABASE_ANON_KEY = "TU-ANON-KEY-AQUI";
 </script>
 
 <script>
@@ -195,7 +195,7 @@ function maintenanceToRow(b, createdBy) {
     return { vehicle_id: b.vehicleId, start_date: b.startDate, end_date: b.endDate, start_time: b.startTime || "00:00", end_time: b.endTime || "23:59", reason: b.reason, created_by: createdBy };
 }
 function profileFromRow(row) {
-    return { id: row.id, name: row.full_name, email: row.email, role: row.role, licenseExpiry: row.license_expiry };
+    return { id: row.id, name: row.full_name, email: row.email, role: row.role, licenseExpiry: row.license_expiry, status: row.status || "active" };
 }
 // ---------- Helpers ----------
 function dateTime(dateStr, timeStr) { return new Date(`${dateStr}T${timeStr}:00`); }
@@ -685,6 +685,15 @@ function SetNewPasswordScreen({ onDone }) {
                         React.createElement(Icon, { name: showPassword ? "eye-off" : "eye", size: 17, color: "#8A7B5C" }))),
                 error && React.createElement(ErrorLine, null, error),
                 React.createElement("button", { className: "login-btn-primary", style: { marginTop: 10 }, onClick: submit, disabled: loading }, loading ? "Guardando…" : "Guardar contraseña"))));
+}
+function AccessBlockedScreen({ title, message, onSignOut }) {
+    return React.createElement("div", { className: "login-wrap" },
+        React.createElement("div", { style: { width: "100%", maxWidth: 380 } },
+            React.createElement("div", { className: "login-card" },
+                React.createElement("div", { className: "login-eyebrow" }, "Acceso restringido"),
+                React.createElement("h1", { className: "login-title", style: { fontSize: 24 } }, title),
+                React.createElement("p", { className: "login-subtitle" }, message),
+                React.createElement("button", { className: "login-btn-secondary", style: { marginTop: 0 }, onClick: onSignOut }, "Cerrar sesi\u00F3n"))));
 }
 // ---------- Calendar ----------
 function MonthCalendar({ year, month, vehicle, reservations, maintenanceBlocks, onDayClick }) {
@@ -1364,29 +1373,121 @@ function HistorialTab({ vehicles, reservations, maintenanceBlocks }) {
         viewingTicket && (React.createElement(TicketModal, { reservation: viewingTicket.reservation, vehicle: viewingTicket.vehicle, onClose: () => setViewingTicket(null), showEmailNotice: false })));
 }
 // ---------- Claves tab ----------
-function UsuariosTab({ profiles, currentUser, updateUserRole }) {
-    const sorted = profiles.slice().sort((a, b) => a.name.localeCompare(b.name));
+function UsuariosTab({ profiles, currentUser, updateUserRole, setUserStatus, deleteUserProfile, updateMyEmail }) {
+    const sorted = profiles.slice().sort((a, b) => {
+        const order = { pending: 0, active: 1, disabled: 2 };
+        if (order[a.status] !== order[b.status])
+            return order[a.status] - order[b.status];
+        return a.name.localeCompare(b.name);
+    });
+    const [email, setEmail] = useState(currentUser.email || "");
+    const [emailMsg, setEmailMsg] = useState("");
+    const [emailErr, setEmailErr] = useState("");
+    const [emailLoading, setEmailLoading] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [pwdMsg, setPwdMsg] = useState("");
+    const [pwdErr, setPwdErr] = useState("");
+    const [pwdLoading, setPwdLoading] = useState(false);
+    const saveEmail = async () => {
+        setEmailMsg("");
+        setEmailErr("");
+        if (!email.trim()) {
+            setEmailErr("Ingresa un correo.");
+            return;
+        }
+        setEmailLoading(true);
+        const result = await updateMyEmail(email.trim());
+        setEmailLoading(false);
+        if (!result.ok) {
+            setEmailErr(result.error);
+            return;
+        }
+        setEmailMsg("Correo actualizado. Si tu proyecto lo requiere, confirma el cambio desde el enlace que te llegará por correo.");
+    };
+    const savePassword = async () => {
+        setPwdMsg("");
+        setPwdErr("");
+        if (!currentPassword || !newPassword) {
+            setPwdErr("Completa ambos campos.");
+            return;
+        }
+        if (newPassword.length < 6) {
+            setPwdErr("La nueva contraseña debe tener al menos 6 caracteres.");
+            return;
+        }
+        setPwdLoading(true);
+        const { error: signInErr } = await supabaseClient.auth.signInWithPassword({ email: currentUser.email, password: currentPassword });
+        if (signInErr) {
+            setPwdLoading(false);
+            setPwdErr("La contraseña actual no es correcta.");
+            return;
+        }
+        const { error: updErr } = await supabaseClient.auth.updateUser({ password: newPassword });
+        setPwdLoading(false);
+        if (updErr) {
+            setPwdErr(updErr.message);
+            return;
+        }
+        setPwdMsg("Contraseña actualizada correctamente.");
+        setCurrentPassword("");
+        setNewPassword("");
+    };
+    const handleDelete = (p) => {
+        if (window.confirm(`¿Eliminar el acceso de ${p.name}? Esta acción no se puede deshacer.`)) {
+            deleteUserProfile(p.id);
+        }
+    };
     return React.createElement("div", null,
         React.createElement("h1", { style: { fontSize: 20, fontWeight: 800, margin: "0 0 4px" } }, "Usuarios"),
-        React.createElement("p", { style: { fontSize: 14, color: "#6B7280", margin: "0 0 20px" } }, "Cuentas registradas y su rol dentro del sistema. Los usuarios se registran ellos mismos desde la pantalla de ingreso."),
-        React.createElement("div", { className: "card", style: { padding: 20 } },
+        React.createElement("p", { style: { fontSize: 14, color: "#6B7280", margin: "0 0 20px" } }, "Cuentas registradas y su acceso al sistema. Las contrase\u00F1as nunca pasan por nuestro c\u00F3digo: las guarda y cifra el sistema de autenticaci\u00F3n de Supabase."),
+        React.createElement("div", { className: "card", style: { padding: 20, marginBottom: 20 } },
+            React.createElement("h2", { style: { fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em", marginTop: 0 } }, "Usuarios con acceso"),
             sorted.length === 0 && React.createElement("p", { style: { fontSize: 14, color: "#9CA3AF" } }, "No hay usuarios registrados todav\u00EDa."),
             React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, sorted.map(p => {
-                const status = licenseStatus(p.licenseExpiry);
-                return React.createElement("div", { key: p.id, className: "card", style: { padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 } },
-                    React.createElement("div", null,
+                const isSelf = p.id === currentUser.id;
+                const lic = licenseStatus(p.licenseExpiry);
+                return React.createElement("div", { key: p.id, className: "card", style: { padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 } },
+                    React.createElement("div", { style: { minWidth: 140 } },
                         React.createElement("div", { style: { fontSize: 14, fontWeight: 700 } },
                             p.name,
-                            p.id === currentUser.id ? " (tú)" : ""),
+                            isSelf ? " (tú)" : ""),
                         React.createElement("div", { style: { fontSize: 12, color: "#6B7280" } }, p.email),
-                        status && (React.createElement("div", { style: { marginTop: 4 } },
-                            React.createElement(Pill, { tone: status === "vigente" ? "green" : "red" },
+                        lic && (React.createElement("div", { style: { marginTop: 4 } },
+                            React.createElement(Pill, { tone: lic === "vigente" ? "green" : "red" },
                                 "Licencia ",
-                                status === "vigente" ? "vigente" : "vencida")))),
+                                lic === "vigente" ? "vigente" : "vencida")))),
+                    isSelf ? (React.createElement(Pill, { tone: p.role === "admin" ? "amber" : "green" }, p.role === "admin" ? "Administrador" : "Usuario")) : (React.createElement("select", { className: "input", style: { width: "auto" }, value: p.role, onChange: e => updateUserRole(p.id, e.target.value) },
+                        React.createElement("option", { value: "usuario" }, "Usuario"),
+                        React.createElement("option", { value: "admin" }, "Administrador"))),
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" } },
-                        React.createElement(Pill, { tone: p.role === "admin" ? "amber" : "green" }, p.role === "admin" ? "Administrador" : "Usuario"),
-                        p.id !== currentUser.id && (React.createElement(Button, { variant: "ghost", onClick: () => updateUserRole(p.id, p.role === "admin" ? "usuario" : "admin") }, p.role === "admin" ? "Quitar admin" : "Hacer admin"))));
-            }))));
+                        p.status === "pending" && React.createElement(Pill, { tone: "amber" }, "Pendiente de aprobaci\u00F3n"),
+                        p.status === "active" && React.createElement(Pill, { tone: "green" }, "Activo"),
+                        p.status === "disabled" && React.createElement(Pill, { tone: "neutral" }, "Desactivado"),
+                        !isSelf && p.status === "pending" && (React.createElement(React.Fragment, null,
+                            React.createElement(Button, { variant: "accent", onClick: () => setUserStatus(p.id, "active") }, "Aprobar cuenta"),
+                            React.createElement(Button, { variant: "ghost", onClick: () => handleDelete(p) }, "Eliminar"))),
+                        !isSelf && p.status === "active" && (React.createElement(Button, { variant: "ghost", onClick: () => setUserStatus(p.id, "disabled") }, "Desactivar")),
+                        !isSelf && p.status === "disabled" && (React.createElement(Button, { variant: "ghost", onClick: () => setUserStatus(p.id, "active") }, "Activar"))));
+            }))),
+        React.createElement("div", { className: "card", style: { padding: 20, marginBottom: 20 } },
+            React.createElement("h2", { style: { fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em", marginTop: 0 } }, "Actualizar mi correo"),
+            React.createElement("p", { style: { fontSize: 13, color: "#6B7280", marginTop: 0 } }, "Necesitas un correo real registrado para poder usar \"\u00BFOlvidaste la contrase\u00F1a?\" si alg\u00FAn d\u00EDa la olvidas."),
+            React.createElement(Field, { label: "Correo electr\u00F3nico" },
+                React.createElement("input", { className: "input", type: "email", value: email, onChange: e => setEmail(e.target.value), placeholder: "tu@correo.com" })),
+            emailErr && React.createElement(ErrorLine, null, emailErr),
+            emailMsg && React.createElement("div", { style: { fontSize: 13, color: "#2E5339", background: "#DCE7DD", borderRadius: 8, padding: "8px 10px", marginBottom: 12 } }, emailMsg),
+            React.createElement(Button, { variant: "accent", onClick: saveEmail, disabled: emailLoading }, emailLoading ? "Guardando…" : "Guardar correo")),
+        React.createElement("div", { className: "card", style: { padding: 20 } },
+            React.createElement("h2", { style: { fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em", marginTop: 0 } }, "Cambiar mi contrase\u00F1a"),
+            React.createElement("div", { className: "grid-2" },
+                React.createElement(Field, { label: "Contrase\u00F1a actual" },
+                    React.createElement("input", { className: "input", type: "password", value: currentPassword, onChange: e => setCurrentPassword(e.target.value) })),
+                React.createElement(Field, { label: "Nueva contrase\u00F1a" },
+                    React.createElement("input", { className: "input", type: "password", value: newPassword, onChange: e => setNewPassword(e.target.value) }))),
+            pwdErr && React.createElement(ErrorLine, null, pwdErr),
+            pwdMsg && React.createElement("div", { style: { fontSize: 13, color: "#2E5339", background: "#DCE7DD", borderRadius: 8, padding: "8px 10px", marginBottom: 12 } }, pwdMsg),
+            React.createElement(Button, { variant: "accent", onClick: savePassword, disabled: pwdLoading }, pwdLoading ? "Actualizando…" : "Actualizar contraseña")));
 }
 // ---------- Main App ----------
 function App() {
@@ -1409,6 +1510,7 @@ function App() {
     const [dayInfo, setDayInfo] = useState(null);
     const [pendingDeleteId, setPendingDeleteId] = useState(null);
     const [showAbout, setShowAbout] = useState(false);
+    const [gestionOpen, setGestionOpen] = useState(true);
     // --- Sesión de Supabase Auth ---
     React.useEffect(() => {
         if (!supabaseClient) {
@@ -1424,15 +1526,21 @@ function App() {
         return () => { listener && listener.subscription && listener.subscription.unsubscribe(); };
     }, []);
     // --- Perfil del usuario autenticado ---
+    const [profileNotFound, setProfileNotFound] = useState(false);
     React.useEffect(() => {
         if (!supabaseClient || !session) {
             setProfile(null);
+            setProfileNotFound(false);
             return;
         }
         let cancelled = false;
         supabaseClient.from("profiles").select("*").eq("id", session.user.id).single().then(({ data }) => {
-            if (!cancelled && data)
+            if (cancelled)
+                return;
+            if (data)
                 setProfile(profileFromRow(data));
+            else
+                setProfileNotFound(true);
         });
         return () => { cancelled = true; };
     }, [session && session.user && session.user.id]);
@@ -1477,9 +1585,18 @@ function App() {
     if (!session) {
         return React.createElement(AuthScreen, null);
     }
+    if (profileNotFound) {
+        return React.createElement(AccessBlockedScreen, { title: "No encontramos tu cuenta", message: "Tu cuenta ya no est\u00E1 registrada en el sistema. Contacta a un administrador si crees que esto es un error.", onSignOut: () => supabaseClient.auth.signOut() });
+    }
     if (!currentUser) {
         return React.createElement("div", { className: "login-wrap" },
             React.createElement("div", { style: { color: INK, fontSize: 14 } }, "Cargando tu perfil\u2026"));
+    }
+    if (currentUser.status === "pending") {
+        return React.createElement(AccessBlockedScreen, { title: "Cuenta pendiente de aprobaci\u00F3n", message: "Tu cuenta fue creada correctamente, pero un administrador todav\u00EDa debe aprobarla antes de que puedas usar el sistema.", onSignOut: () => supabaseClient.auth.signOut() });
+    }
+    if (currentUser.status === "disabled") {
+        return React.createElement(AccessBlockedScreen, { title: "Cuenta desactivada", message: "Un administrador desactiv\u00F3 el acceso de esta cuenta. Contacta a un administrador si crees que esto es un error.", onSignOut: () => supabaseClient.auth.signOut() });
     }
     const handleDayClick = (dateStr, dayReservations, dayBlocks) => {
         if (dayReservations.length > 0 || (dayBlocks && dayBlocks.length > 0)) {
@@ -1609,13 +1726,42 @@ function App() {
         }
         setProfiles(prev => prev.map(p => p.id === userId ? { ...p, role: newRole } : p));
     };
+    const setUserStatus = async (userId, newStatus) => {
+        const { error } = await supabaseClient.from("profiles").update({ status: newStatus }).eq("id", userId);
+        if (error) {
+            alert("No se pudo actualizar el estado: " + error.message);
+            return;
+        }
+        setProfiles(prev => prev.map(p => p.id === userId ? { ...p, status: newStatus } : p));
+    };
+    const deleteUserProfile = async (userId) => {
+        const { error } = await supabaseClient.from("profiles").delete().eq("id", userId);
+        if (error) {
+            alert("No se pudo eliminar el usuario: " + error.message);
+            return;
+        }
+        setProfiles(prev => prev.filter(p => p.id !== userId));
+    };
+    const updateMyEmail = async (newEmail) => {
+        const { error } = await supabaseClient.auth.updateUser({ email: newEmail });
+        if (error)
+            return { ok: false, error: error.message };
+        const { error: profErr } = await supabaseClient.from("profiles").update({ email: newEmail }).eq("id", currentUser.id);
+        if (profErr)
+            return { ok: false, error: profErr.message };
+        setProfile(prev => ({ ...prev, email: newEmail }));
+        setProfiles(prev => prev.map(p => p.id === currentUser.id ? { ...p, email: newEmail } : p));
+        return { ok: true };
+    };
     const handleSignOut = async () => { await supabaseClient.auth.signOut(); };
     const NAV = [
         { id: "reservas", label: "Reservas", icon: "calendar", adminOnly: false },
-        { id: "admin", label: "Administración", icon: "shield", adminOnly: true },
         { id: "historial", label: "Historial", icon: "ticket", adminOnly: true },
         { id: "reportes", label: "Reportes", icon: "bar-chart", adminOnly: true },
-        { id: "usuarios", label: "Usuarios", icon: "user", adminOnly: true },
+    ];
+    const GESTION_ITEMS = [
+        { id: "admin", label: "Administración", icon: "shield" },
+        { id: "usuarios", label: "Usuarios", icon: "user" },
     ];
     return React.createElement("div", { className: "app-layout" },
         React.createElement("aside", { className: "sidebar" },
@@ -1627,9 +1773,22 @@ function App() {
                         "M4 FAD",
                         React.createElement("br", null),
                         React.createElement("span", { style: { fontSize: 10, fontWeight: 500, color: "#B7BDCC", textTransform: "none", letterSpacing: "normal" } }, "Flota de Autos"))),
-                React.createElement("nav", { style: { marginTop: 16, display: "flex", flexDirection: "column", gap: 2, padding: "0 8px" } }, NAV.filter(n => !n.adminOnly || isAdmin).map(n => (React.createElement("button", { key: n.id, onClick: () => setTab(n.id), className: "nav-item" + (tab === n.id ? " active" : "") },
-                    React.createElement(Icon, { name: n.icon, size: 16 }),
-                    n.label))))),
+                React.createElement("nav", { style: { marginTop: 16, display: "flex", flexDirection: "column", gap: 2, padding: "0 8px" } },
+                    React.createElement("button", { onClick: () => setTab("reservas"), className: "nav-item" + (tab === "reservas" ? " active" : "") },
+                        React.createElement(Icon, { name: "calendar", size: 16 }),
+                        "Reservas"),
+                    isAdmin && (React.createElement(React.Fragment, null,
+                        React.createElement("button", { onClick: () => setGestionOpen(o => !o), className: "nav-item", style: { justifyContent: "space-between" } },
+                            React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                                React.createElement(Icon, { name: "shield", size: 16 }),
+                                "Gesti\u00F3n"),
+                            React.createElement(Icon, { name: gestionOpen ? "chevron-left" : "chevron-right", size: 13 })),
+                        gestionOpen && GESTION_ITEMS.map(n => (React.createElement("button", { key: n.id, onClick: () => setTab(n.id), className: "nav-item" + (tab === n.id ? " active" : ""), style: { paddingLeft: 30, fontSize: 13 } },
+                            React.createElement(Icon, { name: n.icon, size: 15 }),
+                            n.label))))),
+                    NAV.filter(n => n.id !== "reservas" && (!n.adminOnly || isAdmin)).map(n => (React.createElement("button", { key: n.id, onClick: () => setTab(n.id), className: "nav-item" + (tab === n.id ? " active" : "") },
+                        React.createElement(Icon, { name: n.icon, size: 16 }),
+                        n.label))))),
             React.createElement("div", { style: { padding: 16, borderTop: "1px solid rgba(255,255,255,0.1)" } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
                     React.createElement("div", { style: { width: 28, height: 28, borderRadius: "50%", background: AMBER, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: INK } }, currentUser.name.charAt(0).toUpperCase()),
@@ -1647,7 +1806,7 @@ function App() {
             tab === "admin" && isAdmin && React.createElement(AdminTab, { vehicles: vehicles, addVehicle: addVehicle, removeVehicle: removeVehicle, reservations: reservations, deleteReservation: deleteReservation, maintenanceBlocks: maintenanceBlocks, addMaintenanceBlock: addMaintenanceBlock, removeMaintenanceBlock: removeMaintenanceBlock }),
             tab === "historial" && isAdmin && React.createElement(HistorialTab, { vehicles: vehicles, reservations: reservations, maintenanceBlocks: maintenanceBlocks }),
             tab === "reportes" && isAdmin && React.createElement(ReportesTab, { vehicles: vehicles, reservations: reservations, maintenanceBlocks: maintenanceBlocks }),
-            tab === "usuarios" && isAdmin && React.createElement(UsuariosTab, { profiles: profiles, currentUser: currentUser, updateUserRole: updateUserRole })),
+            tab === "usuarios" && isAdmin && React.createElement(UsuariosTab, { profiles: profiles, currentUser: currentUser, updateUserRole: updateUserRole, setUserStatus: setUserStatus, deleteUserProfile: deleteUserProfile, updateMyEmail: updateMyEmail })),
         showForm && (React.createElement(Modal, { title: "Nueva reserva", icon: React.createElement(Icon, { name: "calendar", size: 16 }), onClose: () => setShowForm(false) },
             React.createElement(ReservationForm, { vehicles: vehicles, defaultVehicleId: selectedVehicleId, defaultDate: formDate, currentUser: currentUser, error: formError, onSubmit: handleCreateReservation, onCancel: () => setShowForm(false) }))),
         ticket && React.createElement(TicketModal, { reservation: ticket, vehicle: vehicles.find(v => v.id === ticket.vehicleId), onClose: () => setTicket(null), title: "Reserva confirmada" }),
