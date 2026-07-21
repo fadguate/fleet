@@ -71,9 +71,25 @@
 
   .field-label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#6B7280;margin-bottom:4px;}
 
-  .app-layout{min-height:100vh;display:flex;}
-  .sidebar{width:224px;flex-shrink:0;background:var(--ink);display:flex;flex-direction:column;justify-content:space-between;}
+  .app-layout{min-height:100vh;display:flex;flex-direction:column;}
   .main{flex:1;padding:24px;overflow-y:auto;}
+
+  .topbar{background:var(--ink);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+  .topbar-brand{display:flex;align-items:center;gap:10px;}
+  .topbar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .topbar-btn{background:#E4D7AE;color:var(--ink);border:1px solid #DCCFA3;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+  .topbar-btn:disabled{opacity:.6;cursor:not-allowed;}
+  .topbar-user{background:rgba(255,255,255,0.08);border-radius:999px;padding:8px 14px;font-size:13px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
+  .topbar-user b{font-weight:700;}
+  .topbar-user span{color:#C9A24B;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
+  .topbar-about{background:none;border:none;color:#B7BDCC;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;}
+
+  .tabbar{display:flex;gap:8px;padding:12px 20px;background:#EDE3CC;overflow-x:auto;}
+  .subtabbar{display:flex;gap:8px;padding:0 20px 14px;background:#EDE3CC;overflow-x:auto;}
+  .tab-pill{flex-shrink:0;display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:999px;background:#E4D7AE;color:var(--ink);font-weight:700;font-size:13px;border:1px solid #DCCFA3;cursor:pointer;white-space:nowrap;}
+  .tab-pill.active{background:#fff;box-shadow:0 1px 4px rgba(28,35,51,0.15);}
+  .sub-pill{flex-shrink:0;padding:8px 16px;border-radius:999px;background:#E4D7AE;color:var(--ink);font-weight:600;font-size:12.5px;border:1px solid #DCCFA3;cursor:pointer;white-space:nowrap;}
+  .sub-pill.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 
   .grid-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
   .weekday{text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8A8574;padding:4px 0;}
@@ -84,8 +100,6 @@
   .layout-2col-even{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
   .layout-3col{display:grid;grid-template-columns:2fr 1fr;gap:20px;}
   @media (max-width:880px){
-    .app-layout{flex-direction:column;}
-    .sidebar{width:100%;flex-direction:row;align-items:center;}
     .grid-3{grid-template-columns:1fr;}
     .layout-2col,.layout-2col-even,.layout-3col{grid-template-columns:1fr;}
   }
@@ -485,6 +499,11 @@ function Icon({ name, size = 16, color = "currentColor" }) {
             React.createElement("circle", { cx: "12", cy: "12", r: "9", ...c }),
             React.createElement("line", { x1: "12", y1: "11", x2: "12", y2: "16.5", ...c }),
             React.createElement("circle", { cx: "12", cy: "7.8", r: "0.6", fill: color, stroke: "none" }));
+        case "refresh": return React.createElement("svg", { ...box },
+            React.createElement("path", { ...c, d: "M4 12a8 8 0 0 1 13.7-5.7L20 8" }),
+            React.createElement("polyline", { points: "20,3 20,8 15,8", ...c }),
+            React.createElement("path", { ...c, d: "M20 12a8 8 0 0 1-13.7 5.7L4 16" }),
+            React.createElement("polyline", { points: "4,21 4,16 9,16", ...c }));
         case "eye": return React.createElement("svg", { ...box },
             React.createElement("path", { ...c, d: "M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z" }),
             React.createElement("circle", { cx: "12", cy: "12", r: "3", ...c }));
@@ -1538,7 +1557,6 @@ function App() {
     const [pendingDeleteId, setPendingDeleteId] = useState(null);
     const [editingReservation, setEditingReservation] = useState(null);
     const [showAbout, setShowAbout] = useState(false);
-    const [gestionOpen, setGestionOpen] = useState(true);
     // --- Sesión de Supabase Auth ---
     React.useEffect(() => {
         if (!supabaseClient) {
@@ -1575,31 +1593,37 @@ function App() {
     const currentUser = profile;
     const isAdmin = currentUser && currentUser.role === "admin";
     // --- Datos de la flota (autos, reservas, mantenimiento, usuarios) ---
-    React.useEffect(() => {
+    const [refreshing, setRefreshing] = useState(false);
+    const refreshData = async (showSpinner) => {
         if (!supabaseClient || !currentUser)
             return;
+        if (showSpinner)
+            setRefreshing(true);
+        const [vRes, rRes, mRes, pRes] = await Promise.all([
+            supabaseClient.from("vehicles").select("*").order("plate"),
+            supabaseClient.from("reservations").select("*").order("start_date", { ascending: false }),
+            supabaseClient.from("maintenance_blocks").select("*"),
+            supabaseClient.from("profiles").select("*"),
+        ]);
+        if (vRes.data) {
+            const list = vRes.data.map(vehicleFromRow);
+            setVehicles(list);
+            setSelectedVehicleId(prev => prev || (list[0] && list[0].id));
+        }
+        if (rRes.data)
+            setReservations(rRes.data.map(reservationFromRow));
+        if (mRes.data)
+            setMaintenanceBlocks(mRes.data.map(maintenanceFromRow));
+        if (pRes.data)
+            setProfiles(pRes.data.map(profileFromRow));
+        if (showSpinner)
+            setRefreshing(false);
+    };
+    React.useEffect(() => {
         let cancelled = false;
-        (async () => {
-            const [vRes, rRes, mRes, pRes] = await Promise.all([
-                supabaseClient.from("vehicles").select("*").order("plate"),
-                supabaseClient.from("reservations").select("*").order("start_date", { ascending: false }),
-                supabaseClient.from("maintenance_blocks").select("*"),
-                supabaseClient.from("profiles").select("*"),
-            ]);
-            if (cancelled)
-                return;
-            if (vRes.data) {
-                const list = vRes.data.map(vehicleFromRow);
-                setVehicles(list);
-                setSelectedVehicleId(prev => prev || (list[0] && list[0].id));
-            }
-            if (rRes.data)
-                setReservations(rRes.data.map(reservationFromRow));
-            if (mRes.data)
-                setMaintenanceBlocks(mRes.data.map(maintenanceFromRow));
-            if (pRes.data)
-                setProfiles(pRes.data.map(profileFromRow));
-        })();
+        if (currentUser) {
+            refreshData(false).then(() => { });
+        }
         return () => { cancelled = true; };
     }, [currentUser && currentUser.id]);
     const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0];
@@ -1834,44 +1858,41 @@ function App() {
         { id: "admin", label: "Administración", icon: "shield" },
         { id: "usuarios", label: "Usuarios", icon: "user" },
     ];
+    const gestionActive = tab === "admin" || tab === "usuarios";
     return React.createElement("div", { className: "app-layout" },
-        React.createElement("aside", { className: "sidebar" },
-            React.createElement("div", null,
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "20px 20px" } },
-                    React.createElement("div", { style: { width: 32, height: 32, borderRadius: 6, background: AMBER, display: "flex", alignItems: "center", justifyContent: "center" } },
-                        React.createElement(Icon, { name: "car", size: 17, color: INK })),
-                    React.createElement("div", { style: { color: "#fff", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".02em", fontSize: 14, lineHeight: 1.3 } },
-                        "M4 FAD",
-                        React.createElement("br", null),
-                        React.createElement("span", { style: { fontSize: 10, fontWeight: 500, color: "#B7BDCC", textTransform: "none", letterSpacing: "normal" } }, "Flota de Autos"))),
-                React.createElement("nav", { style: { marginTop: 16, display: "flex", flexDirection: "column", gap: 2, padding: "0 8px" } },
-                    React.createElement("button", { onClick: () => setTab("reservas"), className: "nav-item" + (tab === "reservas" ? " active" : "") },
-                        React.createElement(Icon, { name: "calendar", size: 16 }),
-                        "Reservas"),
-                    isAdmin && (React.createElement(React.Fragment, null,
-                        React.createElement("button", { onClick: () => setGestionOpen(o => !o), className: "nav-item", style: { justifyContent: "space-between" } },
-                            React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 10 } },
-                                React.createElement(Icon, { name: "shield", size: 16 }),
-                                "Gesti\u00F3n"),
-                            React.createElement(Icon, { name: gestionOpen ? "chevron-left" : "chevron-right", size: 13 })),
-                        gestionOpen && GESTION_ITEMS.map(n => (React.createElement("button", { key: n.id, onClick: () => setTab(n.id), className: "nav-item" + (tab === n.id ? " active" : ""), style: { paddingLeft: 30, fontSize: 13 } },
-                            React.createElement(Icon, { name: n.icon, size: 15 }),
-                            n.label))))),
-                    NAV.filter(n => n.id !== "reservas" && (!n.adminOnly || isAdmin)).map(n => (React.createElement("button", { key: n.id, onClick: () => setTab(n.id), className: "nav-item" + (tab === n.id ? " active" : "") },
-                        React.createElement(Icon, { name: n.icon, size: 16 }),
-                        n.label))))),
-            React.createElement("div", { style: { padding: 16, borderTop: "1px solid rgba(255,255,255,0.1)" } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
-                    React.createElement("div", { style: { width: 28, height: 28, borderRadius: "50%", background: AMBER, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: INK } }, currentUser.name.charAt(0).toUpperCase()),
-                    React.createElement("div", { style: { fontSize: 12, lineHeight: 1.3 } },
-                        React.createElement("div", { style: { color: "#fff", fontWeight: 700, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, currentUser.name),
-                        React.createElement("div", { style: { color: "#9AA0AE" } }, isAdmin ? "Administrador" : "Usuario"))),
-                React.createElement("button", { onClick: handleSignOut, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#C6CAD3", background: "none", border: "none" } },
-                    React.createElement(Icon, { name: "log-out", size: 13 }),
+        React.createElement("div", { className: "topbar" },
+            React.createElement("div", { className: "topbar-brand" },
+                React.createElement("div", { style: { width: 32, height: 32, borderRadius: 6, background: AMBER, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 } },
+                    React.createElement(Icon, { name: "car", size: 17, color: INK })),
+                React.createElement("div", { style: { fontWeight: 800, textTransform: "uppercase", letterSpacing: ".02em", fontSize: 14, lineHeight: 1.3 } },
+                    "M4 FAD",
+                    React.createElement("br", null),
+                    React.createElement("span", { style: { fontSize: 10, fontWeight: 500, color: "#B7BDCC", textTransform: "none", letterSpacing: "normal" } }, "Flota de Autos"))),
+            React.createElement("div", { className: "topbar-actions" },
+                React.createElement("button", { className: "topbar-btn", onClick: () => refreshData(true), disabled: refreshing },
+                    React.createElement(Icon, { name: "refresh", size: 14 }),
+                    " ",
+                    refreshing ? "Actualizando…" : "Actualizar"),
+                React.createElement("div", { className: "topbar-user" },
+                    React.createElement("b", null, currentUser.name),
+                    React.createElement("span", null, isAdmin ? "Administrador" : "Usuario")),
+                React.createElement("button", { className: "topbar-btn", onClick: handleSignOut },
+                    React.createElement(Icon, { name: "log-out", size: 14 }),
                     " Cerrar sesi\u00F3n"),
-                React.createElement("button", { onClick: () => setShowAbout(true), style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#8A90A0", background: "none", border: "none", marginTop: 8 } },
+                React.createElement("button", { className: "topbar-about", onClick: () => setShowAbout(true) },
                     React.createElement(Icon, { name: "info", size: 13 }),
                     " Acerca de"))),
+        React.createElement("div", { className: "tabbar" },
+            React.createElement("button", { onClick: () => setTab("reservas"), className: "tab-pill" + (tab === "reservas" ? " active" : "") },
+                React.createElement(Icon, { name: "calendar", size: 15 }),
+                "Reservas"),
+            NAV.filter(n => n.id !== "reservas" && (!n.adminOnly || isAdmin)).map(n => (React.createElement("button", { key: n.id, onClick: () => setTab(n.id), className: "tab-pill" + (tab === n.id ? " active" : "") },
+                React.createElement(Icon, { name: n.icon, size: 15 }),
+                n.label))),
+            isAdmin && (React.createElement("button", { onClick: () => setTab("admin"), className: "tab-pill" + (gestionActive ? " active" : "") },
+                React.createElement(Icon, { name: "shield", size: 15 }),
+                "Gesti\u00F3n"))),
+        isAdmin && gestionActive && (React.createElement("div", { className: "subtabbar" }, GESTION_ITEMS.map(n => (React.createElement("button", { key: n.id, onClick: () => setTab(n.id), className: "sub-pill" + (tab === n.id ? " active" : "") }, n.label))))),
         React.createElement("main", { className: "main" },
             tab === "reservas" && React.createElement(ReservasTab, { vehicles: vehicles, reservations: reservations, maintenanceBlocks: maintenanceBlocks, selectedVehicle: selectedVehicle, setSelectedVehicleId: setSelectedVehicleId, calYear: calYear, calMonth: calMonth, setCalYear: setCalYear, setCalMonth: setCalMonth, onDayClick: handleDayClick, currentUser: currentUser, canDelete: canDelete, deleteReservation: deleteReservation, canEditReservation: canEditReservation, openEditReservation: openEditReservation, updateMyLicenseExpiry: updateMyLicenseExpiry, updateVehiclePhoto: updateVehiclePhoto, openNewReservation: () => { setEditingReservation(null); setFormDate(null); setFormError(""); setShowForm(true); } }),
             tab === "admin" && isAdmin && React.createElement(AdminTab, { vehicles: vehicles, addVehicle: addVehicle, removeVehicle: removeVehicle, reservations: reservations, deleteReservation: deleteReservation, maintenanceBlocks: maintenanceBlocks, addMaintenanceBlock: addMaintenanceBlock, removeMaintenanceBlock: removeMaintenanceBlock, canEditReservation: canEditReservation, openEditReservation: openEditReservation }),
