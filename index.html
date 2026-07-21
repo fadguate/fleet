@@ -103,6 +103,11 @@
     .grid-3{grid-template-columns:1fr;}
     .layout-2col,.layout-2col-even,.layout-3col{grid-template-columns:1fr;}
   }
+  @media (min-width:900px){
+    #root{zoom:1.25;}
+    .main{max-width:1180px;margin:0 auto;width:100%;}
+    .tabbar,.subtabbar{box-sizing:border-box;max-width:1180px;margin:0 auto;width:100%;}
+  }
 
   .ticket-box{border:2px dashed var(--ink);border-radius:8px;padding:16px;margin-bottom:16px;}
   .ticket-row{display:flex;justify-content:space-between;font-size:14px;padding:2px 0;}
