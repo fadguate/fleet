@@ -441,6 +441,9 @@ function Icon({ name, size = 16, color = "currentColor" }) {
             React.createElement("line", { x1: "10", y1: "11", x2: "10", y2: "17", ...c }),
             React.createElement("line", { x1: "14", y1: "11", x2: "14", y2: "17", ...c }),
             React.createElement("path", { ...c, d: "M9 7V4h6v3" }));
+        case "edit": return React.createElement("svg", { ...box },
+            React.createElement("path", { ...c, d: "M4 20h4L18.6 9.4a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 15.6z" }),
+            React.createElement("line", { x1: "13", y1: "6.2", x2: "17.8", y2: "11", ...c }));
         case "x": return React.createElement("svg", { ...box },
             React.createElement("line", { x1: "5", y1: "5", x2: "19", y2: "19", ...c }),
             React.createElement("line", { x1: "19", y1: "5", x2: "5", y2: "19", ...c }));
@@ -557,6 +560,7 @@ function AuthScreen() {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [licenseExpiry, setLicenseExpiry] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [info, setInfo] = useState("");
@@ -566,7 +570,7 @@ function AuthScreen() {
             React.createElement("div", { style: { width: "100%", maxWidth: 400 } },
                 React.createElement("div", { className: "login-card" },
                     React.createElement("div", { className: "login-eyebrow" }, "Configuraci\u00F3n pendiente"),
-                                                React.createElement("h1", { className: "login-title", style: { fontSize: 22 } }, "Conecta Supabase"),
+                    React.createElement("h1", { className: "login-title", style: { fontSize: 22 } }, "Conecta Supabase"),
                     React.createElement("p", { className: "login-subtitle" },
                         "Falta configurar ",
                         React.createElement("code", null, "SUPABASE_URL"),
@@ -603,7 +607,12 @@ function AuthScreen() {
                 setError("Ingresa tu nombre completo.");
                 return;
             }
-            const { error: err } = await supabaseClient.auth.signUp({ email: email.trim(), password, options: { data: { full_name: name.trim() } } });
+            if (!licenseExpiry) {
+                setLoading(false);
+                setError("Ingresa la fecha de vencimiento de tu licencia de conducir.");
+                return;
+            }
+            const { error: err } = await supabaseClient.auth.signUp({ email: email.trim(), password, options: { data: { full_name: name.trim(), license_expiry: licenseExpiry } } });
             setLoading(false);
             if (err) {
                 setError(err.message);
@@ -632,7 +641,9 @@ function AuthScreen() {
                     mode === "reset" && "Te enviaremos un enlace por correo para restablecer tu contraseña."),
                 mode === "signup" && (React.createElement(React.Fragment, null,
                     React.createElement("label", { className: "login-field-label" }, "Nombre completo"),
-                    React.createElement("input", { className: "login-input", style: { marginBottom: 16 }, value: name, onChange: e => setName(e.target.value), placeholder: "Ej. Ana Torres" }))),
+                    React.createElement("input", { className: "login-input", style: { marginBottom: 16 }, value: name, onChange: e => setName(e.target.value), placeholder: "Ej. Ana Torres" }),
+                    React.createElement("label", { className: "login-field-label" }, "Vencimiento de licencia de conducir"),
+                    React.createElement("input", { className: "login-input", style: { marginBottom: 16 }, type: "date", value: licenseExpiry, onChange: e => setLicenseExpiry(e.target.value) }))),
                 React.createElement("label", { className: "login-field-label" }, "Correo electr\u00F3nico"),
                 React.createElement("input", { className: "login-input", style: { marginBottom: mode === "reset" ? 6 : 16 }, type: "email", value: email, onChange: e => setEmail(e.target.value), placeholder: "ana.torres@empresa.com" }),
                 mode !== "reset" && (React.createElement(React.Fragment, null,
@@ -740,21 +751,26 @@ function MonthCalendar({ year, month, vehicle, reservations, maintenanceBlocks, 
         }));
 }
 // ---------- Reservation form ----------
-function ReservationForm({ vehicles, defaultVehicleId, defaultDate, currentUser, onSubmit, onCancel, error }) {
+function ReservationForm({ vehicles, defaultVehicleId, defaultDate, currentUser, onSubmit, onCancel, error, editingReservation }) {
     var _a;
-    const [vehicleId, setVehicleId] = useState(defaultVehicleId || ((_a = vehicles[0]) === null || _a === void 0 ? void 0 : _a.id) || "");
-    const [startDate, setStartDate] = useState(defaultDate || todayStr());
-    const [endDate, setEndDate] = useState(defaultDate || todayStr());
-    const [startTime, setStartTime] = useState("08:00");
-    const [endTime, setEndTime] = useState("12:00");
-    const [fullDay, setFullDay] = useState(false);
-    const [purpose, setPurpose] = useState("");
+    const [vehicleId, setVehicleId] = useState(editingReservation ? editingReservation.vehicleId : (defaultVehicleId || ((_a = vehicles[0]) === null || _a === void 0 ? void 0 : _a.id) || ""));
+    const [startDate, setStartDate] = useState(editingReservation ? editingReservation.startDate : (defaultDate || todayStr()));
+    const [endDate, setEndDate] = useState(editingReservation ? editingReservation.endDate : (defaultDate || todayStr()));
+    const [startTime, setStartTime] = useState(editingReservation ? editingReservation.startTime : "08:00");
+    const [endTime, setEndTime] = useState(editingReservation ? editingReservation.endTime : "12:00");
+    const [fullDay, setFullDay] = useState(editingReservation ? !!editingReservation.fullDay : false);
+    const [purpose, setPurpose] = useState(editingReservation ? editingReservation.purpose || "" : "");
     const [purposeErr, setPurposeErr] = useState("");
-    const [hasCompanions, setHasCompanions] = useState(false);
-    const [companions, setCompanions] = useState("");
-    const [observations, setObservations] = useState("");
+    const [hasCompanions, setHasCompanions] = useState(editingReservation ? !!editingReservation.hasCompanions : false);
+    const [companions, setCompanions] = useState(editingReservation ? editingReservation.companions || "" : "");
+    const [observations, setObservations] = useState(editingReservation ? editingReservation.observations || "" : "");
     const status = licenseStatus(currentUser.licenseExpiry);
+    const licenseBlocked = currentUser.role !== "admin" && (status === "vencida" || !currentUser.licenseExpiry);
     const submit = () => {
+        if (licenseBlocked) {
+            setPurposeErr("No puedes reservar con la licencia vencida o sin registrar.");
+            return;
+        }
         if (!purpose.trim()) {
             setPurposeErr("Indica el motivo de la reserva.");
             return;
@@ -781,8 +797,11 @@ function ReservationForm({ vehicles, defaultVehicleId, defaultDate, currentUser,
                 status === "vigente" ? "vigente" : "vencida",
                 " \u00B7 ",
                 formatPretty(currentUser.licenseExpiry)))),
+        licenseBlocked && (React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "flex-start", background: "#FBDADA", borderRadius: 8, padding: 12, fontSize: 13, color: "#8A2A22", marginBottom: 14 } },
+            React.createElement(Icon, { name: "alert", size: 16, color: "#8A2A22" }),
+            React.createElement("div", null, "No puedes crear ni modificar reservas mientras tu licencia est\u00E9 vencida o sin registrar. Actual\u00EDzala desde \"Actualizar vencimiento\" en la secci\u00F3n Reservas."))),
         React.createElement(Field, { label: "Auto" },
-            React.createElement("select", { className: "input", value: vehicleId, onChange: e => setVehicleId(e.target.value) }, vehicles.map(v => React.createElement("option", { key: v.id, value: v.id },
+            React.createElement("select", { className: "input", value: vehicleId, onChange: e => setVehicleId(e.target.value), disabled: licenseBlocked }, vehicles.map(v => React.createElement("option", { key: v.id, value: v.id },
                 v.plate,
                 " \u00B7 ",
                 v.brand,
@@ -793,26 +812,26 @@ function ReservationForm({ vehicles, defaultVehicleId, defaultDate, currentUser,
                 ")")))),
         React.createElement("div", { className: "grid-2" },
             React.createElement(Field, { label: "Fecha inicio" },
-                React.createElement("input", { className: "input", type: "date", value: startDate, min: todayStr(), onChange: e => setStartDate(e.target.value) })),
+                React.createElement("input", { className: "input", type: "date", value: startDate, min: todayStr(), onChange: e => setStartDate(e.target.value), disabled: licenseBlocked })),
             React.createElement(Field, { label: "Fecha fin" },
-                React.createElement("input", { className: "input", type: "date", value: endDate, min: startDate, onChange: e => setEndDate(e.target.value) }))),
+                React.createElement("input", { className: "input", type: "date", value: endDate, min: startDate, onChange: e => setEndDate(e.target.value), disabled: licenseBlocked }))),
         React.createElement("label", { className: "checkbox-row" },
-            React.createElement("input", { type: "checkbox", checked: fullDay, onChange: e => setFullDay(e.target.checked) }),
+            React.createElement("input", { type: "checkbox", checked: fullDay, onChange: e => setFullDay(e.target.checked), disabled: licenseBlocked }),
             "Reservar el/los d\u00EDa(s) completo(s) (00:00 \u2013 23:59)"),
         !fullDay && (React.createElement("div", { className: "grid-2" },
             React.createElement(Field, { label: "Hora inicio" },
-                React.createElement("input", { className: "input", type: "time", value: startTime, onChange: e => setStartTime(e.target.value) })),
+                React.createElement("input", { className: "input", type: "time", value: startTime, onChange: e => setStartTime(e.target.value), disabled: licenseBlocked })),
             React.createElement(Field, { label: "Hora fin" },
-                React.createElement("input", { className: "input", type: "time", value: endTime, onChange: e => setEndTime(e.target.value) })))),
+                React.createElement("input", { className: "input", type: "time", value: endTime, onChange: e => setEndTime(e.target.value), disabled: licenseBlocked })))),
         React.createElement(Field, { label: "Motivo de la reserva" },
-            React.createElement("textarea", { className: "input", rows: 2, value: purpose, onChange: e => setPurpose(e.target.value), placeholder: "Ej. Visita a cliente en zona norte" })),
+            React.createElement("textarea", { className: "input", rows: 2, value: purpose, onChange: e => setPurpose(e.target.value), placeholder: "Ej. Visita a cliente en zona norte", disabled: licenseBlocked })),
         React.createElement("label", { className: "checkbox-row" },
-            React.createElement("input", { type: "checkbox", checked: hasCompanions, onChange: e => setHasCompanions(e.target.checked) }),
+            React.createElement("input", { type: "checkbox", checked: hasCompanions, onChange: e => setHasCompanions(e.target.checked), disabled: licenseBlocked }),
             "\u00BFLleva acompa\u00F1antes extra?"),
         hasCompanions && (React.createElement(Field, { label: "Nombres de los acompa\u00F1antes" },
-            React.createElement("textarea", { className: "input", rows: 2, value: companions, onChange: e => setCompanions(e.target.value), placeholder: "Ej. Juan P\u00E9rez, Luc\u00EDa G\u00F3mez" }))),
+            React.createElement("textarea", { className: "input", rows: 2, value: companions, onChange: e => setCompanions(e.target.value), placeholder: "Ej. Juan P\u00E9rez, Luc\u00EDa G\u00F3mez", disabled: licenseBlocked }))),
         React.createElement(Field, { label: "Observaciones (opcional)" },
-            React.createElement("textarea", { className: "input", rows: 2, value: observations, onChange: e => setObservations(e.target.value), placeholder: "Notas adicionales para esta reserva" })),
+            React.createElement("textarea", { className: "input", rows: 2, value: observations, onChange: e => setObservations(e.target.value), placeholder: "Notas adicionales para esta reserva", disabled: licenseBlocked })),
         React.createElement("div", { style: { fontSize: 12, color: "#6B7280", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 } },
             React.createElement(Icon, { name: "user", size: 13 }),
             " Reserva a nombre de ",
@@ -826,7 +845,7 @@ function ReservationForm({ vehicles, defaultVehicleId, defaultDate, currentUser,
         (purposeErr || error) && React.createElement(ErrorLine, null, purposeErr || error),
         React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 } },
             React.createElement(Button, { variant: "ghost", onClick: onCancel }, "Cancelar"),
-            React.createElement(Button, { variant: "accent", onClick: submit }, "Confirmar reserva")));
+            React.createElement(Button, { variant: "accent", onClick: submit, disabled: licenseBlocked }, editingReservation ? "Guardar cambios" : "Confirmar reserva")));
 }
 // ---------- Confirmation ticket ----------
 function TicketModal({ reservation, vehicle, onClose, showEmailNotice = true, title = "Boleta de reserva" }) {
@@ -890,7 +909,7 @@ function TicketModal({ reservation, vehicle, onClose, showEmailNotice = true, ti
             React.createElement(Button, { variant: "primary", style: { flex: 1 }, onClick: onClose }, "Cerrar")));
 }
 // ---------- Reservas tab ----------
-function ReservasTab({ vehicles, reservations, maintenanceBlocks, selectedVehicle, setSelectedVehicleId, calYear, calMonth, setCalYear, setCalMonth, onDayClick, currentUser, canDelete, deleteReservation, updateMyLicenseExpiry, updateVehiclePhoto, openNewReservation }) {
+function ReservasTab({ vehicles, reservations, maintenanceBlocks, selectedVehicle, setSelectedVehicleId, calYear, calMonth, setCalYear, setCalMonth, onDayClick, currentUser, canDelete, deleteReservation, canEditReservation, openEditReservation, updateMyLicenseExpiry, updateVehiclePhoto, openNewReservation }) {
     const prevMonth = () => { if (calMonth === 0) {
         setCalMonth(11);
         setCalYear(calYear - 1);
@@ -930,6 +949,8 @@ function ReservasTab({ vehicles, reservations, maintenanceBlocks, selectedVehicl
         updateVehiclePhoto(selectedVehicle.id, file);
         e.target.value = "";
     };
+    const isAdminUser = currentUser.role === "admin";
+    const licenseBlocked = !isAdminUser && (status === "vencida" || !currentUser.licenseExpiry);
     return React.createElement("div", null,
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 } },
             React.createElement("div", null,
@@ -941,8 +962,9 @@ function ReservasTab({ vehicles, reservations, maintenanceBlocks, selectedVehicl
                         status === "vigente" ? "vigente" : "vencida",
                         " \u00B7 ",
                         formatPretty(currentUser.licenseExpiry))) : (React.createElement(Pill, { tone: "neutral" }, "Sin fecha de vencimiento de licencia registrada")),
-                    React.createElement("button", { onClick: () => { setNewLicenseDate(currentUser.licenseExpiry || ""); setLicenseErr(""); setShowLicenseModal(true); }, style: { background: "none", border: "none", color: INK, fontSize: 12, textDecoration: "underline", padding: 0 } }, "Actualizar vencimiento"))),
-            React.createElement(Button, { variant: "accent", onClick: openNewReservation },
+                    React.createElement("button", { onClick: () => { setNewLicenseDate(currentUser.licenseExpiry || ""); setLicenseErr(""); setShowLicenseModal(true); }, style: { background: "none", border: "none", color: INK, fontSize: 12, textDecoration: "underline", padding: 0 } }, "Actualizar vencimiento")),
+                licenseBlocked && (React.createElement("div", { style: { marginTop: 6, fontSize: 12, color: RED } }, "No puedes crear ni modificar reservas hasta actualizar tu licencia."))),
+            React.createElement(Button, { variant: "accent", onClick: openNewReservation, disabled: licenseBlocked },
                 React.createElement(Icon, { name: "plus", size: 15, color: "#fff" }),
                 " Nueva reserva")),
         showLicenseModal && (React.createElement(Modal, { title: "Actualizar vencimiento de licencia", icon: React.createElement(Icon, { name: "user", size: 16 }), onClose: () => setShowLicenseModal(false) },
@@ -1020,6 +1042,8 @@ function ReservasTab({ vehicles, reservations, maintenanceBlocks, selectedVehicl
                             React.createElement("div", { style: { display: "flex", gap: 4 } },
                                 React.createElement("button", { className: "icon-btn", title: "Ver boleta", onClick: () => setViewingTicket({ reservation: r, vehicle: v }) },
                                     React.createElement(Icon, { name: "search", size: 14, color: INK })),
+                                canEditReservation(r) && (React.createElement("button", { className: "icon-btn", title: "Editar reserva", onClick: () => openEditReservation(r) },
+                                    React.createElement(Icon, { name: "edit", size: 14, color: INK }))),
                                 canDelete(r) && React.createElement("button", { className: "icon-btn icon-btn-danger", onClick: () => deleteReservation(r.id) },
                                     React.createElement(Icon, { name: "trash", size: 13, color: RED })))),
                         React.createElement("div", { style: { fontSize: 12, color: "#6B7280" } },
@@ -1038,7 +1062,7 @@ function ReservasTab({ vehicles, reservations, maintenanceBlocks, selectedVehicl
         viewingTicket && (React.createElement(TicketModal, { reservation: viewingTicket.reservation, vehicle: viewingTicket.vehicle, onClose: () => setViewingTicket(null), showEmailNotice: false })));
 }
 // ---------- Admin tab ----------
-function AdminTab({ vehicles, addVehicle, removeVehicle, reservations, deleteReservation, maintenanceBlocks, addMaintenanceBlock, removeMaintenanceBlock }) {
+function AdminTab({ vehicles, addVehicle, removeVehicle, reservations, deleteReservation, maintenanceBlocks, addMaintenanceBlock, removeMaintenanceBlock, canEditReservation, openEditReservation }) {
     var _a;
     const [showAdd, setShowAdd] = useState(false);
     const [plate, setPlate] = useState("");
@@ -1158,8 +1182,11 @@ function AdminTab({ vehicles, addVehicle, removeVehicle, reservations, deleteRes
                                 "-",
                                 r.endTime),
                             r.hasCompanions && React.createElement(Pill, { tone: "neutral" }, "+ acompa\u00F1antes"))),
-                    React.createElement("button", { className: "icon-btn icon-btn-danger", onClick: () => deleteReservation(r.id) },
-                        React.createElement(Icon, { name: "trash", size: 15, color: RED })));
+                    React.createElement("div", { style: { display: "flex", gap: 4 } },
+                        canEditReservation && canEditReservation(r) && (React.createElement("button", { className: "icon-btn", title: "Editar reserva", onClick: () => openEditReservation(r) },
+                            React.createElement(Icon, { name: "edit", size: 15, color: INK }))),
+                        React.createElement("button", { className: "icon-btn icon-btn-danger", onClick: () => deleteReservation(r.id) },
+                            React.createElement(Icon, { name: "trash", size: 15, color: RED }))));
             }))),
         showAdd && (React.createElement(Modal, { title: "Agregar auto", icon: React.createElement(Icon, { name: "car", size: 16 }), onClose: () => setShowAdd(false) },
             React.createElement(Field, { label: "Placa" },
@@ -1509,6 +1536,7 @@ function App() {
     const [ticket, setTicket] = useState(null);
     const [dayInfo, setDayInfo] = useState(null);
     const [pendingDeleteId, setPendingDeleteId] = useState(null);
+    const [editingReservation, setEditingReservation] = useState(null);
     const [showAbout, setShowAbout] = useState(false);
     const [gestionOpen, setGestionOpen] = useState(true);
     // --- Sesión de Supabase Auth ---
@@ -1610,6 +1638,10 @@ function App() {
         }
     };
     const handleCreateReservation = async (data) => {
+        if (currentUser.role !== "admin" && (licenseStatus(currentUser.licenseExpiry) === "vencida" || !currentUser.licenseExpiry)) {
+            setFormError("No puedes reservar con la licencia vencida o sin registrar.");
+            return;
+        }
         const id = genReservationCode(reservations.map(r => r.id));
         const candidateLocal = { id, ...data, userName: currentUser.name, userEmail: currentUser.email, userId: currentUser.id, licenseExpiry: currentUser.licenseExpiry, createdAt: new Date().toISOString() };
         const conflict = reservations.find(r => r.vehicleId === data.vehicleId && reservationsOverlap(r, candidateLocal));
@@ -1635,6 +1667,45 @@ function App() {
         setReservations(prev => [...prev, candidate]);
         setShowForm(false);
         setTicket(candidate);
+    };
+    const canEditReservation = (r) => (isAdmin || r.userId === currentUser.id) && r.endDate >= todayStr();
+    const openEditReservation = (r) => { setEditingReservation(r); setFormError(""); setShowForm(true); setDayInfo(null); };
+    const handleUpdateReservation = async (data) => {
+        if (currentUser.role !== "admin" && (licenseStatus(currentUser.licenseExpiry) === "vencida" || !currentUser.licenseExpiry)) {
+            setFormError("No puedes modificar reservas con la licencia vencida o sin registrar.");
+            return;
+        }
+        const id = editingReservation.id;
+        const candidateLocal = { id, ...data, userId: editingReservation.userId, createdAt: editingReservation.createdAt };
+        const conflict = reservations.find(r => r.id !== id && r.vehicleId === data.vehicleId && reservationsOverlap(r, candidateLocal));
+        if (conflict) {
+            setFormError("Ese auto ya tiene una reserva que se cruza con el horario elegido.");
+            return;
+        }
+        const blockConflict = maintenanceBlocks.find(b => b.vehicleId === data.vehicleId && reservationsOverlap(b, candidateLocal));
+        if (blockConflict) {
+            setFormError("Ese auto está en mantenimiento durante las fechas elegidas.");
+            return;
+        }
+        if (dateTime(data.startDate, data.startTime) >= dateTime(data.endDate, data.endTime)) {
+            setFormError("La fecha/hora de fin debe ser posterior al inicio.");
+            return;
+        }
+        const { data: updated, error } = await supabaseClient.from("reservations").update({
+            vehicle_id: data.vehicleId, start_date: data.startDate, end_date: data.endDate,
+            start_time: data.startTime, end_time: data.endTime, full_day: data.fullDay,
+            purpose: data.purpose, has_companions: data.hasCompanions, companions: data.companions,
+            observations: data.observations,
+        }).eq("id", id).select().single();
+        if (error) {
+            setFormError("No se pudo actualizar la reserva: " + error.message);
+            return;
+        }
+        const updatedReservation = reservationFromRow(updated);
+        setReservations(prev => prev.map(r => r.id === id ? updatedReservation : r));
+        setShowForm(false);
+        setEditingReservation(null);
+        setTicket(updatedReservation);
     };
     const canDelete = (r) => isAdmin || r.userId === currentUser.id;
     const deleteReservation = (id) => { setPendingDeleteId(id); };
@@ -1802,13 +1873,13 @@ function App() {
                     React.createElement(Icon, { name: "info", size: 13 }),
                     " Acerca de"))),
         React.createElement("main", { className: "main" },
-            tab === "reservas" && React.createElement(ReservasTab, { vehicles: vehicles, reservations: reservations, maintenanceBlocks: maintenanceBlocks, selectedVehicle: selectedVehicle, setSelectedVehicleId: setSelectedVehicleId, calYear: calYear, calMonth: calMonth, setCalYear: setCalYear, setCalMonth: setCalMonth, onDayClick: handleDayClick, currentUser: currentUser, canDelete: canDelete, deleteReservation: deleteReservation, updateMyLicenseExpiry: updateMyLicenseExpiry, updateVehiclePhoto: updateVehiclePhoto, openNewReservation: () => { setFormDate(null); setFormError(""); setShowForm(true); } }),
-            tab === "admin" && isAdmin && React.createElement(AdminTab, { vehicles: vehicles, addVehicle: addVehicle, removeVehicle: removeVehicle, reservations: reservations, deleteReservation: deleteReservation, maintenanceBlocks: maintenanceBlocks, addMaintenanceBlock: addMaintenanceBlock, removeMaintenanceBlock: removeMaintenanceBlock }),
+            tab === "reservas" && React.createElement(ReservasTab, { vehicles: vehicles, reservations: reservations, maintenanceBlocks: maintenanceBlocks, selectedVehicle: selectedVehicle, setSelectedVehicleId: setSelectedVehicleId, calYear: calYear, calMonth: calMonth, setCalYear: setCalYear, setCalMonth: setCalMonth, onDayClick: handleDayClick, currentUser: currentUser, canDelete: canDelete, deleteReservation: deleteReservation, canEditReservation: canEditReservation, openEditReservation: openEditReservation, updateMyLicenseExpiry: updateMyLicenseExpiry, updateVehiclePhoto: updateVehiclePhoto, openNewReservation: () => { setEditingReservation(null); setFormDate(null); setFormError(""); setShowForm(true); } }),
+            tab === "admin" && isAdmin && React.createElement(AdminTab, { vehicles: vehicles, addVehicle: addVehicle, removeVehicle: removeVehicle, reservations: reservations, deleteReservation: deleteReservation, maintenanceBlocks: maintenanceBlocks, addMaintenanceBlock: addMaintenanceBlock, removeMaintenanceBlock: removeMaintenanceBlock, canEditReservation: canEditReservation, openEditReservation: openEditReservation }),
             tab === "historial" && isAdmin && React.createElement(HistorialTab, { vehicles: vehicles, reservations: reservations, maintenanceBlocks: maintenanceBlocks }),
             tab === "reportes" && isAdmin && React.createElement(ReportesTab, { vehicles: vehicles, reservations: reservations, maintenanceBlocks: maintenanceBlocks }),
             tab === "usuarios" && isAdmin && React.createElement(UsuariosTab, { profiles: profiles, currentUser: currentUser, updateUserRole: updateUserRole, setUserStatus: setUserStatus, deleteUserProfile: deleteUserProfile, updateMyEmail: updateMyEmail })),
-        showForm && (React.createElement(Modal, { title: "Nueva reserva", icon: React.createElement(Icon, { name: "calendar", size: 16 }), onClose: () => setShowForm(false) },
-            React.createElement(ReservationForm, { vehicles: vehicles, defaultVehicleId: selectedVehicleId, defaultDate: formDate, currentUser: currentUser, error: formError, onSubmit: handleCreateReservation, onCancel: () => setShowForm(false) }))),
+        showForm && (React.createElement(Modal, { title: editingReservation ? "Editar reserva" : "Nueva reserva", icon: React.createElement(Icon, { name: editingReservation ? "edit" : "calendar", size: 16 }), onClose: () => { setShowForm(false); setEditingReservation(null); } },
+            React.createElement(ReservationForm, { vehicles: vehicles, defaultVehicleId: selectedVehicleId, defaultDate: formDate, editingReservation: editingReservation, currentUser: currentUser, error: formError, onSubmit: editingReservation ? handleUpdateReservation : handleCreateReservation, onCancel: () => { setShowForm(false); setEditingReservation(null); } }))),
         ticket && React.createElement(TicketModal, { reservation: ticket, vehicle: vehicles.find(v => v.id === ticket.vehicleId), onClose: () => setTicket(null), title: "Reserva confirmada" }),
         dayInfo && (React.createElement(Modal, { title: `Reservas · ${formatPretty(dayInfo.dateStr)}`, icon: React.createElement(Icon, { name: "calendar", size: 16 }), onClose: () => setDayInfo(null) },
             dayInfo.dayBlocks && dayInfo.dayBlocks.length > 0 && (React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 } }, dayInfo.dayBlocks.map(b => (React.createElement("div", { key: b.id, className: "card", style: { padding: 12, borderColor: BLUE } },
@@ -1842,8 +1913,11 @@ function App() {
                         r.hasCompanions && React.createElement("div", { style: { fontSize: 12, color: "#6B7280", marginTop: 2 } },
                             "Acompa\u00F1antes: ",
                             r.companions)),
-                    canDelete(r) ? (React.createElement("button", { className: "icon-btn icon-btn-danger", onClick: () => deleteReservation(r.id) },
-                        React.createElement(Icon, { name: "trash", size: 15, color: RED }))) : React.createElement(Pill, { tone: "neutral" }, "No editable")))))),
+                    React.createElement("div", { style: { display: "flex", gap: 4 } },
+                        canEditReservation(r) && (React.createElement("button", { className: "icon-btn", onClick: () => openEditReservation(r), title: "Editar reserva" },
+                            React.createElement(Icon, { name: "edit", size: 15, color: INK }))),
+                        canDelete(r) ? (React.createElement("button", { className: "icon-btn icon-btn-danger", onClick: () => deleteReservation(r.id) },
+                            React.createElement(Icon, { name: "trash", size: 15, color: RED }))) : (!canEditReservation(r) && React.createElement(Pill, { tone: "neutral" }, "No editable")))))))),
             dayInfo.fullyBlocked ? (React.createElement("div", { style: { fontSize: 12, color: RED, display: "flex", alignItems: "center", gap: 6 } },
                 React.createElement(Icon, { name: "alert", size: 14, color: RED }),
                 " Este auto no tiene horarios disponibles este d\u00EDa.")) : (React.createElement(React.Fragment, null,
