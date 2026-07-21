@@ -566,7 +566,7 @@ function AuthScreen() {
             React.createElement("div", { style: { width: "100%", maxWidth: 400 } },
                 React.createElement("div", { className: "login-card" },
                     React.createElement("div", { className: "login-eyebrow" }, "Configuraci\u00F3n pendiente"),
-                    React.createElement("h1", { className: "login-title", style: { fontSize: 22 } }, "Conecta Supabase"),
+                                                React.createElement("h1", { className: "login-title", style: { fontSize: 22 } }, "Conecta Supabase"),
                     React.createElement("p", { className: "login-subtitle" },
                         "Falta configurar ",
                         React.createElement("code", null, "SUPABASE_URL"),
@@ -903,7 +903,7 @@ function ReservasTab({ vehicles, reservations, maintenanceBlocks, selectedVehicl
     }
     else
         setCalMonth(calMonth + 1); };
-    const myReservations = reservations.filter(r => r.createdBy === currentUser.email).sort((a, b) => b.startDate.localeCompare(a.startDate));
+    const myReservations = reservations.filter(r => r.userId === currentUser.id).sort((a, b) => b.startDate.localeCompare(a.startDate));
     const status = licenseStatus(currentUser.licenseExpiry);
     const isAdmin = currentUser.role === "admin";
     const [showLicenseModal, setShowLicenseModal] = useState(false);
